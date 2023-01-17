@@ -1,0 +1,54 @@
+{
+  "variables": {
+    "boot_wait": "5s",
+    "disk_size": "4096",
+    "iso_checksum": "07b94e6b1a0b0260b94c83d6bb76b26bf7a310dc78d7a9c7432809fb9bc6194a",
+    "iso_url": "http://mirror.corbina.net/pub/Linux/centos/7.9.2009/isos/x86_64/CentOS-7-x86_64-Minimal-2009.iso",
+    "memsize": "1024",
+    "numvcpus": "2",
+    "ssh_password": "vagrant",
+    "ssh_username": "vagrant",
+    "vm_name": "CentOS-7-x86_64"
+  },
+  "builders": [
+    {
+      "type": "vmware-iso",
+      "boot_command": [
+        "<tab> text ks=http://{{ .HTTPIP }}:{{ .HTTPPort }}/ks.cfg<enter><wait>"
+      ],
+      "boot_wait": "{{ user `boot_wait` }}",
+      "disk_size": "{{ user `disk_size` }}",
+      "disk_type_id": "0",
+      "guest_os_type": "centos-64",
+      "headless": false,
+      "http_directory": "http",
+      "iso_checksum": "{{ user `iso_checksum` }}",
+      "iso_url": "{{ user `iso_url` }}",
+      "shutdown_command": "echo 'vagrant'|sudo -S /sbin/halt -h -p",
+      "ssh_password": "{{ user `ssh_password` }}",
+      "ssh_port": 22,
+      "ssh_username": "{{ user `ssh_username` }}",
+      "ssh_timeout": "30m",
+      "name": "vmware",
+      "vm_name": "{{ user `vm_name` }}"
+    }
+  ],
+  "provisioners": [
+    {
+      "execute_command": "{{.Vars}} sudo -S -E bash '{{.Path}}'",
+      "expect_disconnect": true,
+      "scripts": [
+        "scripts/stage-1-kernel-update.sh",
+        "scripts/stage-2-clean.sh"
+      ],
+      "pause_before": "20s",
+      "start_retry_timeout": "1m",
+      "type": "shell"
+    }
+  ],
+  "post-processors": [{
+    "type": "vagrant",
+    "compression_level": "8",
+    "output": "centos-7{{.Provider}}.box"
+  }]
+}
