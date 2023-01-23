@@ -1,0 +1,61 @@
+# -*- mode: ruby -*-
+# vim: set ft=ruby :
+
+MACHINES = {
+  :"mdadm-raid" => {
+              :box_name => "generic/ubuntu2004",
+              :cpus => 2,
+              :memory => 1024,
+            }
+}
+
+Vagrant.configure("2") do |config|
+  MACHINES.each do |boxname, boxconfig|
+    config.vm.synced_folder ".", "/vagrant", disabled: true
+    config.vm.define boxname do |box|
+      box.vm.box = boxconfig[:box_name]
+      box.vm.box_version = boxconfig[:box_version]
+      box.vm.host_name = boxname.to_s
+      box.vm.disk :disk, size: "10GB", primary: true
+      box.vm.provider "virtualbox" do |v|
+        v.memory = boxconfig[:memory]
+        v.cpus = boxconfig[:cpus]
+        (0..4).each do |i|
+          unless File.exist?("disk-#{i}.vdi")
+            v.customize [ "createhd", "--filename", "disk-#{i}", '--variant', 'Fixed', "--size", "5120" ]
+          end
+          v.customize [ "storageattach", :id, "--storagectl", "SATA Controller", "--port", "#{i+1}", "--device", 0, "--type", "hdd", "--medium", "disk-#{i}.vdi" ]
+        end
+      end
+      config.vm.provision "file", source: "raid.sh", destination: "/home/vagrant/raid.sh"
+      config.vm.provision "shell", inline: <<-SHELL
+        # Update system
+        sudo apt update && sudo apt upgrade -y
+        # Install pkgs
+        sudo apt install smartmontools -y
+        # Copy script file
+        chmod +x raid.sh && sudo cp raid.sh /usr/local/bin
+        # Make RAID
+        sudo raid.sh -m /mnt/test -e 5 -l 6
+        sleep 3
+        # Check it's done
+        cat /proc/mdstat
+        sudo mdadm -D /dev/md0
+        # Make test file
+        for i in $(seq 1 5); do sudo touch /mnt/test/$i && sudo echo "This is test" >> /mnt/test/$i/test.txt; done
+        # Break raid
+        sudo mdadm /dev/md0 --fail /dev/sde && cat /proc/mdstat && sudo mdadm -D /dev/md0
+        sudo mdadm /dev/md0 --remove /dev/sde && cat /proc/mdstat
+        sleep 7
+        # Check that data is ok
+        for i in $(seq 1 5); do cat /mnt/test/$i/test.txt; done
+        # Fix RAID
+        sudo mdadm /dev/md0 --add /dev/sde
+        sleep 7
+        # Check RAID is ok
+        cat /proc/mdstat
+        echo "RAID HAS BEEN BUILDED AND TESTED! DONE!"
+      SHELL
+    end
+  end
+end
